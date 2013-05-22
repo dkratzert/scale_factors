@@ -17,9 +17,10 @@
 import sys
 import string
 import os
+import logging
 # Python version checks:
 # This script doesn't work with the old Python version provided with APEXII
-print "Python version is %s.%s.%s " %(sys.version_info[0], sys.version_info[1], sys.version_info[2])	
+print "Python version is %s.%s.%s " %(sys.version_info[0], sys.version_info[1], sys.version_info[2])
 if int(sys.version_info[0]) <= 2:
 	if int(sys.version_info[1]) < 7:
 		print "Your python version is %s.%s.%s Please Use version 2.7.x or greather, but not >= 3.0.x!"\
@@ -47,10 +48,10 @@ parser.add_argument("-o", dest="out_file",
 					help=".hkl output file")
 					
 parser.add_argument("-k", dest="scalef", 
-					metavar='"start step numsteps"', 
+					metavar='"start step numscales"', 
 					default=False, 
 					help="Define own resolution shells in sin(theta/lambda) with a start value, size of step, \
-					and quantity of steps with space separation in quotation marks (prohibits -a, -s).")
+					and quantity of scale factors with space separation in quotation marks (prohibits -a, -s).")
 					
 parser.add_argument("-K", dest="defscale", 
 					metavar='"resolution shells"', 
@@ -85,11 +86,11 @@ if options.out_file is None:
 	print "\nPlease give the output hkl-file as argument!\n"
 	parser.print_help()
 	sys.exit(-1)
-if options.scalef is not False:
-	if options.resola is True or options.resols is True:
-		print "\nThe options -a and -s prohibit the option -k!"
-		parser.print_help()
-		sys.exit(-1)
+#if options.scalef is not False:1
+#	if options.resola is True or options.resols is True:
+#		print "\nThe options -a and -s prohibit the option -k!"
+#		parser.print_help()
+#		sys.exit(-1)
 if options.resola is False and options.resols is False and options.defscale is False and options.scalef is False:
 	print "\nPlease give more arguments!\n"
 	parser.print_help()
@@ -154,9 +155,11 @@ def sinthl_zeilen(hkl):
 
 	
 	
-def scale_zeilen(hkl):
+def scale_zeilen(hkl, steps):
 	'''calculates the resolution batches and fills in the refelctions'''
 	print "calculating batches..."
+	keylist = []
+	
 	while True: 
 		line = []
 		line = hkl.readline()
@@ -181,13 +184,17 @@ def scale_zeilen(hkl):
 				zweites = float(99)
 			else:
 				zweites = float(scales[int(key)+1])
-				
+			
 			if erstes < sinthlval < zweites:
 				# h k l batch Fsq sig Tbar
+				keylist.append(key) #mak a list with resolution batches
+				
 				out = '%s %s %s %s %s %s %s\n'%(str(line[0]).rjust(4), str(line[1]).rjust(3), str(line[2]).rjust(3), str(key+1).rjust(2), str(line[4]).rjust(7), str(line[5]).rjust(7), "1.0000".rjust(4))
 				outfile.write(out)
-
-
+		
+	for i in range(steps):
+		logging.info('Refl. in batch %2s: %s',i+1 , keylist.count(i) )
+			
 				
 def create_scalelist(defscale):
 	'''creates a list of scales from command line input'''
@@ -199,7 +206,7 @@ def create_scalelist(defscale):
 	return dscale
 	
 
-def drange(start, stop, step):
+def drange(start, step, stop):
 	# count from start to stop with float(step)
 	r = start
 	while r < stop:
@@ -210,7 +217,17 @@ def drange(start, stop, step):
 		
 if __name__ == "__main__":	
 	'main function'
-	
+	logfile = str(options.out_file+'.lst')
+	logging.basicConfig(filename=logfile, filemode='w', level=logging.INFO, format='%(message)s') #format of logging
+	console = logging.StreamHandler() #define console logging
+	logging.getLogger('').addHandler(console) #adds the console logger
+	logging.info('Scale factor calculation script by Daniel Kratzert (dkratzert@gmx.de)\n')
+	logging.info('Command line arguments given given:')
+	logging.info('hkl-file: %s, p4p/mas-file: %s, output-file: %s\n', options.hkl_file, options.p4p_file, options.out_file)
+	if options.resola is True:
+		logging.info('writing resolution batches in Angstroem instead of batch numbers.')
+	if options.resols is True:
+		logging.info('writing resolution batches in sin(theta/lambda) instead of batch numbers.')
 		
 	if options.defscale is not False:
 		# this runs if we define scale factor shells freely:
@@ -218,20 +235,55 @@ if __name__ == "__main__":
 		key = []
 		key = range(len(scales_list))
 		scales = dict(zip(key, scales_list))
-		print 'scale steps given:', scales.values()
+		#print 'scale steps given:', scales.values()
+		scalesteps = scales.values()
+		
+		printsteps = scalesteps
+		printsteps.append('inf')
+		#print printsteps
+		logging.info('scale steps given: %s (%s batches)', printsteps, len(printsteps))
 	
 	if options.scalef is not False:
-		#this runs if we define "start step num" scale factors
+		#this runs if we define "start step number" scale factors
 		so = options.scalef.split()
+		
+		scalesteps = []
 		start = float(so[0])
-		stop = float(so[0])+float(so[2])*float(so[1])
 		step = float(so[1])
-		print "\nstart:", start, "stop:", stop, "step:", step
-		scalesteps = [round(i, 4) for i in drange(start, stop, step)]
+		scalesteps.append(start)
 		if float(0) not in scalesteps:
 			scalesteps.append(0.0)
-			scalesteps.sort()
-		print 'using scale steps:', scalesteps
+
+		numscales = float(so[2])
+		#print scalesteps
+		scalesteps.sort()
+		# sum up all scale factors until limit reached:
+		for i in scalesteps:
+			if len(scalesteps) < numscales:
+				scalesteps.append(round(scalesteps[-1]+step, 2))
+		
+		scalesteps.sort()
+		printsteps = []
+		
+		for i in range(len(scalesteps)):
+			printsteps.append(scalesteps[i])
+		
+		printsteps.append('inf')
+		
+		angststeps = []
+		for i in printsteps:
+			if i > 0:
+				angststeps.append(round(1.0 / (2.0 * float(i)), 2))
+		angststeps.append(999)
+		angststeps.sort()
+		#print angststeps
+		#for x in printsteps:
+		#	print repr(x).rjust(2)
+		#print '%s %s %s%s %s' %('using scale steps (in sintl):', printsteps, " (", len(printsteps)-1, "scale factors)")
+		#print '%s %s' %('using scale steps (in angstrom):', angststeps)
+		logging.info('using scale steps (in sintl):    %s (%s scale fact.)', printsteps, len(printsteps)-1)
+		logging.info('using scale steps (in angstrom): %s', angststeps)
+		
 		key = []
 		key = range(len(scalesteps))
 		scales = dict(zip(key, scalesteps))
@@ -254,15 +306,18 @@ if __name__ == "__main__":
 		#print "we have a XD-Masterfile"
 		wavenum = find_line(p4pfile, 'WAVE')
 		la = float(p4pfile[wavenum].split()[1])
-		print "\nWavelength is:", la
+		#print "\nWavelength is:", la
+		logging.info('\nWavelength is: %s', la)
 	elif int(options.p4p_file.lower().find('.p4p')) != -1:
 		#print "we have a p4p file"
 		# we have a p4p file
 		sourcenum = find_line(p4pfile, 'SOURCE')
 		la = float(p4pfile[sourcenum].split()[2])
-		print "\nWavelength is:", la
+		#print "\nWavelength is:", la
+		logging.info('\nWavelength is: %s', la)
 	else:
-		print "\nCould not find a valid cell and wavelength in %s\n" %(options.p4p_file)
+		#print "\nCould not find a valid cell and wavelength in %s\n" %(options.p4p_file)
+		logging.info('\nCould not find a valid cell and wavelength in %s\n', options.p4p_file)
 		sys.exit(-1)
 		
 		
@@ -275,14 +330,15 @@ if __name__ == "__main__":
 	beta = np.radians(float(cell_data[4]))
 	gamma = np.radians(float(cell_data[5]))
 	
-	print "Cell constants:", '  '.join(cell_data[:])
-	
+	cellparam = '  '.join(cell_data[:])
+	#print "Cell constants:", '  '.join(cell_data[:])
+	logging.info('\nCell constants: %s\n', cellparam)
 	
 	hkl = open( options.hkl_file, "r" )  # read in the orginal hkl
 	sinthl_zeilen(hkl)
 	
 	hkl = open( options.hkl_file, "r" )
 	outfile = open( options.out_file, "w" )
-	scale_zeilen(hkl)
+	scale_zeilen(hkl, len(scalesteps))
 	print "finished!"
 	
