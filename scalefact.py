@@ -187,7 +187,7 @@ def scale_zeilen(hkl, steps):
 			
 			if erstes < sinthlval < zweites:
 				# h k l batch Fsq sig Tbar
-				keylist.append(key) #mak a list with resolution batches
+				keylist.append(key) #make a list with resolution batches
 				
 				out = '%s %s %s %s %s %s %s\n'%(str(line[0]).rjust(4), str(line[1]).rjust(3), str(line[2]).rjust(3), str(key+1).rjust(2), str(line[4]).rjust(7), str(line[5]).rjust(7), "1.0000".rjust(4))
 				outfile.write(out)
