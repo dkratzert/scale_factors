@@ -6,7 +6,7 @@
 #  can do whatever you want with this stuff. If we meet some day, and you think
 #  this stuff is worth it, you can buy me a beer in return Daniel Kratzert.
 #  ----------------------------------------------------------------------------
-# This script devides a given XD2006 hkl file in different scale factors batches
+# This script devides a given hkl file in different scale factor batches
 #
 # Todo: ability to define scale resolution batches
 # Translations:
