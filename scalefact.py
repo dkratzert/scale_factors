@@ -9,10 +9,8 @@
 # This script devides a given hkl file in different scale factor batches
 #
 # Todo: ability to define scale resolution batches
-# Translations:
-# erstes = first element
 #
-#la = float(0.71073) #lambda (wellenlaenge)
+
 
 import sys
 import string
@@ -23,7 +21,7 @@ import logging
 print "Python version is %s.%s.%s " %(sys.version_info[0], sys.version_info[1], sys.version_info[2])
 if int(sys.version_info[0]) <= 2:
   if int(sys.version_info[1]) < 7:
-    print "Your python version is %s.%s.%s Please Use version 2.7.x or greather, but not >= 3.0.x!"\
+    print "Your python version is %s.%s.%s Please Use version 2.7.x or above, but not >= 3.0.x!"\
     %(sys.version_info[0], sys.version_info[1], sys.version_info[2])
     sys.exit(-1)
 
@@ -97,138 +95,187 @@ if options.resola is False and options.resols is False and options.defscale is F
   sys.exit(-1)
 
   
-  
-def find_line(lines, tofind):
-   for i, line in enumerate(lines):
-      if line.find(tofind) >= 0:
-         return i #gives back the line found in tofind
+def find_line(inputlist, regex, start=None):
+    '''
+    returns the index number of the line where regex is found in the inputlist
+    if stop is true, stop searching with first line found
+    "start" defines a line number to start with the search
+    '''
+    if start:
+      start = int(start)
+      inputlist_slice = inputlist[start:]
+      for i, string in enumerate(inputlist_slice, start):
+        if re.match(regex, string, re.IGNORECASE):
+          return i      # returns the index number if regex found
+    else:
+      for i, string in enumerate(inputlist):
+        if re.match(regex, string, re.IGNORECASE):
+          return i      # returns the index number if regex found
+    return False          # returns False if no regex found (xt solution has no fvar)
 
+def open_file_read(filename, asci=True):
+    if asci:
+        state = 'r'
+    else:
+        state = 'rb'
+    with open(filename, '{0}'.format(state)) as f:
+        if asci:
+            try:
+                file_list = f.readlines()
+            except:
+                return [' ']
+            return file_list
+        else:
+            binary = f.read()
+            return binary
+
+def get_res_cell(filename):
+    '''
+    Returns the unit cell parameters from the list file as list:
+    ['a', 'b', 'c', 'alpha', 'beta', 'gamma']
+    '''
+    file_list = open_file_read(filename)
+    cell = False
+    for line in file_list:
+        if line.startswith('CELL'):
+            cell = line.split()[2:8]
+            try:
+                cell = [float(i) for i in cell]
+                if not len(cell) == 6:
+                    raise ValueError
+            except(ValueError):
+                print('Bad cell parameters in {0}.'.format(filename))
+                return False
+            #break
+    if not cell:
+        #print('Unable to find unit cell parameters in the file.')
+        return False
+    return cell     
+
+class crystal(options):
+  def __init__(self):
+    self.coeff = self.coeffitionts(a, b, c, alpha, beta, gamma, la)
+
+  def coeffitionts(a, b, c, alpha, beta, gamma, la):
+    '''
+    pre-calculates the coefficients needed for the resolution calculation 
+    '''
+    v = a * b * c * np.sqrt( 1+2*(np.cos(alpha)*np.cos(beta)*np.cos(gamma))-np.cos(alpha)**2-np.cos(beta)**2-np.cos(gamma)**2) 
+    astar = (1/v) * b * c * np.sin(alpha)
+    bstar = (1/v) * c * a * np.sin(beta)
+    cstar = (1/v) * a * b * np.sin(gamma)
+    alphastar = ( np.cos(beta) * np.cos(gamma) - np.cos(alpha) ) / (np.sin(beta) * np.sin(gamma) )
+    betastar  = ( np.cos(gamma) * np.cos(alpha) - np.cos(beta) ) / (np.sin(gamma) * np.sin(alpha) )
+    gammastar = ( np.cos(alpha) * np.cos(beta) - np.cos(gamma) ) / (np.sin(alpha) * np.sin(beta) )
+    return (astar, bstar, cstar, alphastar, betastar, gammastar)
+
+  def triklin_sinthl(h, k ,l):
+    '''
+    calculates sin(theta)/lambda or d value for hkl, cell and wavelength values.
+    '''
+    teil1 = (h**2 * astar**2 +   k**2 * bstar**2 + l**2 * cstar**2)
+    teil2 = 2.0 * k * l * bstar * cstar * alphastar
+    teil3 = 2.0 * l * h * cstar * astar * betastar
+    teil4 = 2.0 * h * k * astar * bstar * gammastar
+    sintsq = ( (la**2 / 4.0) * (teil1 + teil2 + teil3 + teil4) )
+    sinthl = np.sqrt(sintsq) / la
+    if options.resola is True:
+      sinthl = 1.0 / (2.0 * sinthl)  #if you want resolution in d
+    return sinthl
+     
      
 
-#
-# calculates the resolution of the refelctions:
-#    
-def triklin(h, k ,l, a, b, c, alpha, beta, gamma, la):
-  '''gives sin(theta)/lambda'''
-  v = a * b * c * np.sqrt( 1 + 2 * (np.cos(alpha) * np.cos(beta) * np.cos(gamma)) - np.cos(alpha)**2 - np.cos(beta)**2 - np.cos(gamma)**2 ) 
-  astar = (1/v) * b * c * np.sin(alpha)
-  bstar = (1/v) * c * a * np.sin(beta)
-  cstar = (1/v) * a * b * np.sin(gamma)
+  def sinthl_row(hkl):
+    '''
+    calculates a list with the resolutions for each reflection
+    '''
+    print "calculating resolutions..."
+    with open(hkl, 'r') as f:
+      for n, line in enumerate(f):
+        try:
+          int(line[2])
+        except:
+          if n < 3:
+            continue
+          else:
+            break
+          line = line.strip()
+          line = line.split()
+        h = int(line[0])
+        k = int(line[1])
+        l = int(line[2])
+        sinthl_list.append(triklin_sinthl(h, k ,l, a, b, c, alpha, beta, gamma, la))
+    sinthl_list.reverse()
+    return sinthl_list
+    
+    
+  def scale_zeilen(hkl, steps, sinthl_list):
+    '''calculates the resolution batches and fills in the refelctions'''
+    print "calculating batches..."
+    keylist = []
+    while True: 
+      line = []
+      line = hkl.readline()
+      if not line: 
+        break
+      line = line.split()
+      try:
+        int(line[0])
+      except:
+        break
+  #    if line[2] == 'NDAT':
+  #      line.append('\n')
+  #      outfile.write(' '.join(line))
+  #      continue
+      sinthlval = sinthl_list.pop()
   
-  alphastar = ( np.cos(beta) * np.cos(gamma) - np.cos(alpha) ) / (np.sin(beta) * np.sin(gamma) )
-  betastar  = ( np.cos(gamma) * np.cos(alpha) - np.cos(beta) ) / (np.sin(gamma) * np.sin(alpha) )
-  gammastar = ( np.cos(alpha) * np.cos(beta) - np.cos(gamma) ) / (np.sin(alpha) * np.sin(beta) )
-        
-  teil1 = (h**2 * astar**2 +   k**2 * bstar**2 + l**2 * cstar**2)
-  teil2 = 2.0 * k * l * bstar * cstar * alphastar
-  teil3 = 2.0 * l * h * cstar * astar * betastar
-  teil4 = 2.0 * h * k * astar * bstar * gammastar
-  
-  sintsq = ( (la**2 / 4.0) * (teil1 + teil2 + teil3 + teil4) )
-  
-  sinthl = np.sqrt(sintsq) / la
-  
-  if options.resola is True:
-    sinthl = 1.0 / (2.0 * sinthl)  #if you want resolution in d
-  return sinthl
-     
-     
-
-def sinthl_zeilen(hkl):
-  '''calculates a list with the resolutions of each reflection'''
-  print "calculating resolutions..."
-  while True: 
-    line = []
-    line = hkl.readline()
-    if not line: 
-      break
-    line = line.split()
-    try:
-      if line[2] == 'NDAT':  #leave header out of the list
-        continue
-    except:
-      continue
-    try:
-      h = int(line[0])
-    except:
-      break
-    k = int(line[1])
-    l = int(line[2])
-    sinthl_list.append(triklin(h, k ,l, a, b, c, alpha, beta, gamma, la))
-  sinthl_list.reverse()
-  return sinthl_list
-  
-  
-def scale_zeilen(hkl, steps, sinthl_list):
-  '''calculates the resolution batches and fills in the refelctions'''
-  print "calculating batches..."
-  keylist = []
-  
-  while True: 
-    line = []
-    line = hkl.readline()
-    if not line: 
-      break
-    line = line.split()
-    try:
-      int(line[0])
-    except:
-      break
-#    if line[2] == 'NDAT':
-#      line.append('\n')
-#      outfile.write(' '.join(line))
-#      continue
-    sinthlval = sinthl_list.pop()
-
-    if options.resola is True or options.resols is True:
-      # fill all informations of h,k,l,I,sig,resolution in out:
-      out = '%s %s %s %s %s  %s\n'%(str(line[0]).rjust(4), 
-                                    str(line[1]).rjust(3),
-                                    str(line[2]).rjust(3), 
-                                    str(line[3]).rjust(7), 
-                                    str(line[4]).rjust(7), 
-                                    str(round(sinthlval, 4)).ljust(6, '0'))
-      outfile.write(out)
-      continue
-    for key in scales.iterkeys():
-      #print key
-      erstes = float(scales[key])
-      if int(key)+1 not in scales:
-        zweites = float(99)
-      else:
-        zweites = float(scales[int(key)+1])
-      
-      if erstes < sinthlval < zweites:
-        # h k l Fsq sig batch 
-        keylist.append(key) #make a list with resolution batches
-        out = '%s %s %s %s %s %s \n'%(str(line[0]).rjust(4), 
-                                      str(line[1]).rjust(3), 
+      if options.resola is True or options.resols is True:
+        # fill all informations of h,k,l,I,sig,resolution in out:
+        out = '%s %s %s %s %s  %s\n'%(str(line[0]).rjust(4), 
+                                      str(line[1]).rjust(3),
                                       str(line[2]).rjust(3), 
                                       str(line[3]).rjust(7), 
                                       str(line[4]).rjust(7), 
-                                      str(key+1).rjust(2))
+                                      str(round(sinthlval, 4)).ljust(6, '0'))
         outfile.write(out)
-    
-  for i in range(steps):
-    logging.info('Refl. in batch %2s: %s',i+1 , keylist.count(i) )
-      
+        continue
+      for key in scales.iterkeys():
+        #print key
+        erstes = float(scales[key])
+        if int(key)+1 not in scales:
+          zweites = float(99)
+        else:
+          zweites = float(scales[int(key)+1])
+        if erstes < sinthlval < zweites:
+          # h k l Fsq sig batch 
+          keylist.append(key) #make a list with resolution batches
+          out = '%s %s %s %s %s %s \n'%(str(line[0]).rjust(4), 
+                                        str(line[1]).rjust(3), 
+                                        str(line[2]).rjust(3), 
+                                        str(line[3]).rjust(7), 
+                                        str(line[4]).rjust(7), 
+                                        str(key+1).rjust(2))
+          outfile.write(out)
+    for i in range(steps):
+      logging.info('Refl. in batch %2s: %s',i+1 , keylist.count(i) )
         
-def create_scalelist(defscale):
-  '''creates a list of scales from command line input'''
-  dscale = options.defscale.split()
-  dscale = [float(i) for i in dscale]
-  if float(0) not in dscale:
-    dscale.append(0.0)
-  dscale.sort()
-  return dscale
+          
+  def create_scalelist(defscale):
+    '''creates a list of scales from command line input'''
+    dscale = options.defscale.split()
+    dscale = [float(i) for i in dscale]
+    if float(0) not in dscale:
+      dscale.append(0.0)
+    dscale.sort()
+    return dscale
   
 
-def drange(start, step, stop):
-  # count from start to stop with float(step)
-  r = start
-  while r < stop:
-    yield r
-    r += step
+  def drange(start, step, stop):
+    # count from start to stop with float(step)
+    r = start
+    while r < stop:
+      yield r
+      r += step
 
   
     
@@ -358,8 +405,8 @@ if __name__ == "__main__":
   #print "Cell constants:", '  '.join(cell_data[:])
   logging.info('\nCell constants: %s\n', cellparam)
   
-  hkl = open( options.hkl_file, "r" )  # read in the orginal hkl
-  sinthl_list = sinthl_zeilen(hkl)
+
+  sinthl_list = sinthl_row(options.hkl_file)
   
   hkl = open( options.hkl_file, "r" )
   outfile = open( options.out_file, "w" )
