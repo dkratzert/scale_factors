@@ -1,0 +1,19 @@
+Scale factor calculation script by Daniel Kratzert (dkratzert@gmx.de)
+
+Command line arguments given given:
+hkl-file: pna21_a.hkl, p4p/mas-file: pna21_a.p4p, output-file: test.hkl
+
+using scale steps (in sintl):    [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 'inf'] (7 scale fact.)
+using scale steps (in angstrom): [0.0, 0.83, 1.0, 1.25, 1.67, 2.5, 5.0, 999]
+
+Wavelength is: 0.71073
+
+Cell constants: 19.5842  19.7921  24.6473  90.000  90.000  90.000
+
+Refl. in batch  1: 5336
+Refl. in batch  2: 34016
+Refl. in batch  3: 83494
+Refl. in batch  4: 132827
+Refl. in batch  5: 145163
+Refl. in batch  6: 142642
+Refl. in batch  7: 88479
